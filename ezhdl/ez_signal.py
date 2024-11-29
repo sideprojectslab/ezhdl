@@ -340,18 +340,3 @@ class SignalContainer:
 # here we rename SignalContainer to Bundle for convenience
 class Bundle(SignalContainer):
 	pass
-
-################################################################################
-#                                 SIMPLE TEST                                  #
-################################################################################
-
-if __name__ == "__main__":
-
-	a = Signal(Wire())
-	print(len(Signal.instances))
-	a = Signal(Wire())
-
-	while True:
-		print(len(Signal.instances))
-		Signal.update()
-		time.sleep(1)

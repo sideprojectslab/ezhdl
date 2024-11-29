@@ -109,6 +109,7 @@ def get_vcd_specs(s : Signal|HwType):
 
 	if isinstance(s, Array):
 		elements = len(s)
+		# empty arrays do not need to be dumped
 		if elements == 0:
 			return None, None
 		s = s[0]
@@ -131,7 +132,7 @@ def get_vcd_specs(s : Signal|HwType):
 
 	if s_size != 0:
 		if elements != 0:
-			# creating a tuple
+			# creating a tuple of sizes (in this case all the same)
 			s_size = [s_size]*elements
 		return s_type, s_size
 	return None, None
