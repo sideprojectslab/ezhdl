@@ -24,9 +24,8 @@
 # ---------------------------------------------------------------------------- #
 
 from   __future__ import annotations
-from   typing import List
-
-import subprocess as sp
+from   typing   import List
+import keyboard as kb
 
 try:
 	from ezhdl.ez_types  import *
@@ -45,6 +44,7 @@ class SimpleSim:
 	time_ps         = 0
 	event_times     = []
 	force_run       = False
+	cycle_limit     = 1000
 
 	vcd_path        = None
 	vcd_timescale   = "ps"
@@ -52,7 +52,7 @@ class SimpleSim:
 
 	@classmethod
 	def run(cls, dut:Entity):
-		print("Simulation Started")
+		print('Simulation Started, press "F4" to enter the Pause Menu')
 		cls.stop_simulation = False
 		dut.register_signals()
 
@@ -70,7 +70,7 @@ class SimpleSim:
 				if (updated == 0) and not cls.force_run:
 					break
 				else:
-					if count >= 1000:
+					if count >= cls.cycle_limit:
 						raise Exception("Cyclical assignment detected")
 					count += 1
 				cls.force_run = False
@@ -84,9 +84,32 @@ class SimpleSim:
 			else:
 				cls.time_ps = cls.event_times[0]
 				cls.event_times.pop(0)
+
+			# accepting user input to pause and/or terminate the simulation
+			cls.userinput()
+
 		vcd.flush()
 		print("Simulation Ended")
 
+
+	@classmethod
+	def userinput(cls):
+		if kb.is_pressed('F4'):
+			print('Simulation paused, press "F4" to resume "F10" to terminate')
+			# waiting for space key to be de-pressed
+			while kb.is_pressed('F4'):
+				pass
+			# waiting for new input
+			while True:
+				if kb.is_pressed('F10'):
+					cls.stop_simulation = True
+					break
+				if kb.is_pressed('F4'):
+					# making sure the spacebar is de-pressed before we continue
+					while kb.is_pressed('F4'):
+						pass
+					print('Simulation resumed')
+					break
 
 	@classmethod
 	def stop(cls):
