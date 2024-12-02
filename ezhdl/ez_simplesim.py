@@ -52,7 +52,7 @@ class SimpleSim:
 
 	@classmethod
 	def run(cls, dut:Entity):
-		print('Simulation Started, press "F4" to enter the Pause Menu')
+		print('Simulation Started, press "F10" to enter the Pause Menu')
 		cls.stop_simulation = False
 		dut.register_signals()
 
@@ -94,19 +94,19 @@ class SimpleSim:
 
 	@classmethod
 	def userinput(cls):
-		if kb.is_pressed('F4'):
-			print('Simulation paused, press "F4" to resume "F10" to terminate')
+		if kb.is_pressed('F10'):
+			print('Simulation paused, press "F10" to resume "F12" to terminate')
 			# waiting for space key to be de-pressed
-			while kb.is_pressed('F4'):
+			while kb.is_pressed('F10'):
 				pass
 			# waiting for new input
 			while True:
-				if kb.is_pressed('F10'):
+				if kb.is_pressed('F12'):
 					cls.stop_simulation = True
 					break
-				if kb.is_pressed('F4'):
+				if kb.is_pressed('F10'):
 					# making sure the spacebar is de-pressed before we continue
-					while kb.is_pressed('F4'):
+					while kb.is_pressed('F10'):
 						pass
 					print('Simulation resumed')
 					break

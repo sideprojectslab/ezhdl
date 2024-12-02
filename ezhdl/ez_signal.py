@@ -27,7 +27,7 @@ from   __future__ import annotations
 from   typing import List
 from   copy import deepcopy
 
-import time
+import math
 import weakref
 import inspect
 
@@ -72,8 +72,8 @@ class Signal(object):
 			for _ in range(ppl):
 				self.content.append(SignalContent(obj))
 
-		self.driver = None
-		self.drives : List["Signal"] = []
+		self._driver = None
+		self._drives : List["Signal"] = []
 
 		self._changed    = False
 		self._posedge    = False
@@ -85,16 +85,7 @@ class Signal(object):
 		self.vcd  = None
 
 		Signal.instances.append(weakref.ref(self))
-
-
-	def __str__(self):
-		return str(self.content[0]._obj)
-
-
-	def __del__(self):
-		for i in range(len(Signal.instances)):
-			if Signal.instances[i]() is self:
-				Signal.instances.pop(i)
+		self._forward_attributes()
 
 
 	@property
@@ -107,8 +98,7 @@ class Signal(object):
 		# this is necessary because calling my_object.nxt[:] actually calls
 		# the getter and not the setter. So even just reading the _next might
 		# mean we are changing its value
-		for i in range(0, len(self.content)):
-			self.content[i]._pend = True
+		self.content[0]._pend = True
 		return self.content[0]._next
 
 
@@ -128,26 +118,23 @@ class Signal(object):
 			fail |= True
 
 		# if the receiving object implements additional type checks, we run them
-		if hasattr(self.content[0]._obj, "check_type"):
-			fail |= not self.content[0]._obj.check_type(next_val)
+		if hasattr(self.content[0]._obj, "_check_type"):
+			fail |= not self.content[0]._obj._check_type(next_val)
 
 		# fail if type checks did not succeed
 		if fail:
 			raise Exception(f"Source type ({type(next_val)}) not compatible with destination type ({type(self.content[0]._obj)})")
 
 		# types with assignment do not need to be copied
-		if hasattr(self.content[0]._obj, "assign"):
-			self.content[0]._next.assign(next_val)
-			self.content[0]._pend = True
+		self.content[0]._pend = True
+		if hasattr(self.content[0]._obj, "_assign"):
+			self.content[0]._next._assign(next_val)
 			for i in range(1, len(self.content)):
-				self.content[i]._next.assign(self.content[i-1]._obj)
-				self.content[i]._pend = True
+				self.content[i]._next._assign(self.content[i-1]._obj)
 		else:
 			self.content[0]._next = deepcopy(next_val)
-			self.content[0]._pend = True
 			for i in range(1, len(self.content)):
 				self.content[i]._next = deepcopy(self.content[i-1]._obj)
-				self.content[i]._pend = True
 
 
 	@classmethod
@@ -159,7 +146,7 @@ class Signal(object):
 		for i in Signal.instances:
 			s : Signal = i()
 			# evaluating edges for sensitivity lists
-			if s.content[-1]._pend:
+			if s.content[0]._pend:
 				s._changed = s.changed_eval()
 				s._posedge = s.posedge_eval()
 				s._negedge = s.negedge_eval()
@@ -173,19 +160,19 @@ class Signal(object):
 		# now we can do the actual content update
 		for i in Signal.instances:
 			s : Signal = i()
-			for c in s.content:
-				if c._pend:
+			if s.content[0]._pend:
+				s.content[0]._pend = False
+				for c in s.content:
 					# update count needs to be done per content and not per signal
 					# due to pipelined signals which might be hiding changes within
 					# their pipeline
 					if c._obj != c._next:
 						updated += 1
 
-					if hasattr(c._obj, "assign"):
-						c._obj.assign(c._next)
+					if hasattr(c._obj, "_assign"):
+						c._obj._assign(c._next)
 					else:
 						c._obj = deepcopy(c._next)
-					c._pend = False
 		return updated
 
 
@@ -199,9 +186,9 @@ class Signal(object):
 			s._transition = False
 
 
-	def check_type(self, b:Signal|any):
+	def _check_type(self, b:Signal|any):
 		'''
-		check_type() for Signal is used when connecting signals, checks if the
+		_check_type() for Signal is used when connecting signals, checks if the
 		source object is also a signal and runs all underlying type checks
 		'''
 		# the source object must be a signal
@@ -210,61 +197,31 @@ class Signal(object):
 			# the source object
 			if isinstance(self.content[0]._obj, type(b.content[0]._obj)):
 				# if the receiving object has additional type checks we run them
-				if hasattr(self.content[0]._obj, "check_type"):
-					return self.content[0]._obj.check_type(b.content[0]._obj)
+				if hasattr(self.content[0]._obj, "_check_type"):
+					return self.content[0]._obj._check_type(b.content[0]._obj)
 				else:
 					return True
 		return False
 
-
-	def connect(self, b:Signal|any):
-		if (not (self.driver is None)) and (not (self.driver is b)):
-			raise Exception(f"Signal cannot have multiple drivers")
+	def driver(self, b:Signal):
+		if (not (self._driver is None)) and (not (self._driver is b)):
+			raise Exception(f"Signal cannot have multiple _drivers")
 
 		# connecting signals means letting them "point" to the same underlying SignalContent
-		if self.check_type(b):
+		if self._check_type(b):
 			self.content = b.content
-			self.driver = b
+			self._driver = b
 			present = False
-			for i in b.drives:
+			for i in b._drives:
 				if i is self:
 					present = True
 			if not present:
-				b.drives.append(self)
-			for i in self.drives:
-				i.connect(self)
+				b._drives.append(self)
+			for i in self._drives:
+				i.driver(self)
 		else:
 			raise Exception(f"Source type ({type(b.content[0]._obj)}) not compatible with destination type ({type(self.content[0]._obj)})")
 
-	# overloading <<= as copy-assignment operator
-	def __lshift__(self, other:Signal|any):
-		self.connect(other)
-		return self
-
-	# overloading <<= as copy-assignment operator
-	def __rshift__(self, other:Signal|any):
-		other.connect(self)
-		return self
-
-	# Disabling equality operator
-	def __eq__(self, other):
-		raise NotImplementedError("Operator not supported for this class.")
-
-	# Disabling inequality operator
-	def __ne__(self, other):
-		raise NotImplementedError("Operator not supported for this class.")
-
-	# Disabling string representation
-	def __repr__(self):
-		raise NotImplementedError("Representation is not supported for this class.")
-
-	# Disabling hash functionality
-	def __hash__(self):
-		raise NotImplementedError("Hashing is not supported for this class.")
-
-	# Disabling bool conversion
-	def __bool__(self):
-		raise NotImplementedError("Bool conversion is not supported for this class.")
 
 	def posedge_eval(self):
 		return (self.content[-1]._next != 0) and (self.content[-1]._obj == 0)
@@ -287,12 +244,191 @@ class Signal(object):
 	def changed(self):
 		return self._changed
 
+	# BINDING ALL FUNCTIONS OF THE UNDERLYING OBJECT
+
+	# overloading |= as concurrent assignment operator
+	def __ior__(self, other:Signal):
+		self.driver(other)
+		return self
+
+	# overloading <<= as copy-assignment operator
+	def __ilshift__(self, other:Signal|any):
+		if isinstance(other, Signal):
+			other = other.now
+		self.nxt <<= other
+		return self
+
+	# Dynamically bind methods from the contained object to this signal
+	def _forward_attributes(self):
+		for name in dir(self.content[0]._obj):
+			attr = getattr(self.content[0]._obj, name)
+			# skip private and special methods
+			if not name.startswith("_"):
+				if callable(attr):
+					self._bind_method(name, attr)
+				else:
+					setattr(self, name, attr)
+
+
+	def _bind_method(self, name, method):
+		# Create a wrapper function that calls the contained method
+		def wrapper(*args, **kwargs):
+			return method(*args, **kwargs)
+		# Bind the wrapper function to this Container instance
+		setattr(self, name, wrapper)
+
+	# mathematical binary
+	def __add__(self, other):
+		return self.now + other
+
+	def __radd__(self, other):
+		return other + self.now
+
+	def __sub__(self, other):
+		return self.now - other
+
+	def __rsub__(self, other):
+		return other - self.now
+
+	def __mul__(self, other):
+		return self.now * other
+
+	def __rmul__(self, other):
+		return other * self.now
+
+	def __floordiv__(self, other):
+		return self.now // other
+
+	def __rfloordiv__(self, other):
+		return other // self.now
+
+	def __truediv__(self, other):
+		return self.now / other
+
+	def __rtruediv__(self, other):
+		return other / self.now
+
+	def __lshift__(self, other):
+		return self.now << other
+
+	def __rlshift__(self, other):
+		return other << self.now
+
+	def __rshift__(self, other):
+		return self.now >> other
+
+	def __rrshift__(self, other):
+		return other >> self.now
+
+	def __mod__(self, other):
+		return self.now % other
+
+	def __rmod__(self, other):
+		return other % self.now
+
+	def __pow__(self, other):
+		return self.now ** other
+
+	def __rpow__(self, other):
+		return other ** self.now
+
+	#mathematical unary
+	def __abs__(self):
+		return abs(self.now)
+
+	def __neg__(self):
+		return -(self.now)
+
+	def __round__(self):
+		return round(self.now)
+
+	def __floor__(self):
+		return math.floor(self.now)
+
+	def __ceil__(self):
+		return math.ceil(self.now)
+
+	def __trunc__(self):
+		return math.trunc(self.now)
+
+
+	# bitwise boolean
+	def __and__(self, other):
+		return self.now & other
+
+	def __rand__(self, other):
+		return other & self.now
+
+	def __or__(self, other):
+		return self.now | other
+
+	def __ror__(self, other):
+		return other | self.now
+
+	def __xor__(self, other):
+		return self.now ^ other
+
+	def __rxor__(self, other):
+		return other ^ self.now
+
+	def __invert__(self):
+		return ~self.now
+
+	# comparison
+	def __eq__(self, other):
+		return self.now == other
+	def __ne__(self, other):
+		return self.now != other
+	def __ge__(self, other):
+		return self.now >= other
+	def __gt__(self, other):
+		return self.now > other
+	def __le__(self, other):
+		return self.now <= other
+	def __lt__(self, other):
+		return self.now < other
+
+	# casts
+	def __bool__(self):
+		return self.now.__bool__()
+
+	def __int__(self):
+		return self.now.__int__()
+
+	def __index__(self):
+		return self.now.__index__()
+
+	def __float__(self):
+		return self.now.__float__()
+
+	def __str__(self):
+		return self.now.__str__()
+
+	def __repr__(self):
+		return self.now.__repr__()
+
+	# slicing and other utilities
+	def __len__(self):
+		return self.now.__len__()
+
+	def __getitem__(self, key):
+		return self.now.__getitem__(key)
+
+	def __setitem__(self, key, value):
+		return self.now.__setitem__(key, value)
+
+	def __del__(self):
+		for i in range(len(Signal.instances)):
+			if Signal.instances[i]() is self:
+				Signal.instances.pop(i)
+
 ################################################################################
 #                                     INPUT                                    #
 ################################################################################
 
 class Input(Signal):
-	def connect(self, b:Signal|any):
+
+	def driver(self, b:Signal):
 		stack = inspect.stack()
 		for i in range(1, len(stack)):
 			caller_frame = stack[i]
@@ -300,15 +436,16 @@ class Input(Signal):
 			if caller_self is not None:
 				for val in vars(caller_self).values():
 					if self is val:
-						raise Exception(f"Input Signal cannot have a driver")
-		super().connect(b)
+						raise Exception(f"Input Signal cannot have a _driver")
+		super().driver(b)
 
 ################################################################################
 #                                    OUTPUT                                    #
 ################################################################################
 
 class Output(Signal):
-	def connect(self, b:Signal|any):
+
+	def driver(self, b:Signal):
 		stack = inspect.stack()
 		for i in range(1, len(stack)):
 			caller_frame = stack[i]
@@ -316,9 +453,20 @@ class Output(Signal):
 			if caller_self is not None:
 				for val in vars(caller_self).values():
 					if self is val:
-						super().connect(b)
+						super().driver(b)
 						return
-		raise Exception(f"Output Signal cannot have a driver")
+		raise Exception(f"Output Signal cannot have a _driver")
+
+
+################################################################################
+#                                   UTILITIES                                  #
+################################################################################
+
+def local(obj):
+	if isinstance(obj, Signal):
+		return deepcopy(obj.now)
+	else:
+		return deepcopy(obj)
 
 
 ################################################################################

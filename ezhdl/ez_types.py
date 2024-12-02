@@ -33,25 +33,25 @@ import math
 ################################################################################
 
 class HwType:
-	# all ezhdl types support the assign() method. This allows to define
+	# all ezhdl types support the _assign() method. This allows to define
 	# record-like classes by subclassing HwType. It is recommended to use
 	# ezhdl types within such a class as they can be "assigned" the new value.
 	# Class members of other types will be replaced with a "deepcopy" of the
 	# corresponding member of the source object
 
-	def assign(self, other:HwType|any):
+	def _assign(self, other:HwType|any):
 		# we go through all attributes and if we find any other subclasses
 		# of hwbase we
 		for attr_name, attr_value in vars(self).items():
 			if isinstance(attr_value, HwType):
-				attr_value.assign(vars(other)[attr_name])
+				attr_value._assign(vars(other)[attr_name])
 			else:
 				attr_value = deepcopy(vars(other)[attr_name])
 		return self
 
 	# overloading <<= as copy-assignment operator
 	def __ilshift__(self, other:HwType|any):
-		return self.assign(other)
+		return self._assign(other)
 
 # here we rename HwType to Record for convenience
 class Record(HwType):
@@ -76,12 +76,12 @@ def mask(hi, lo):
 ################################################################################
 
 class Integer(HwType):
-	def constrain(self):
+	def _constrain(self):
 		return self
 
 	def __init__(self, val=0, *args, **kwargs):
 		self.val = val
-		self.constrain()
+		self._constrain()
 
 	@property
 	def val(self):
@@ -99,20 +99,14 @@ class Integer(HwType):
 		val = self.val
 		for i in reversed(args):
 			i.val = val
-			i.constrain()
+			i._constrain()
 			val >>= i.nbits
 
-	def assign(self, other:Integer|any):
+	def _assign(self, other:Integer|any):
+		if hasattr(other, "now"):
+			other = other.now
 		self.val = other
-		return self.constrain()
-
-	def __index__(self):
-		# Define how the object is converted to an integer
-		return self._val
-
-	def __bool__(self):
-		# Define how the object is converted to an integer
-		return bool(self._val)
+		return self._constrain()
 
 	# mathematical
 	def __add__(self, other):
@@ -183,62 +177,38 @@ class Integer(HwType):
 	def __lt__(self, other):
 		return self.val < int(other)
 
-	def __rlt__(self, other):
-		return self.val > int(other)
-
 	def __le__(self, other):
 		return self.val <= int(other)
-
-	def __rle__(self, other):
-		return self.val >= int(other)
 
 	def __gt__(self, other):
 		return self.val > int(other)
 
-	def __rgt__(self, other):
-		return self.val < int(other)
-
 	def __ge__(self, other):
 		return self.val >= int(other)
 
-	def __rge__(self, other):
-		return self.val <= int(other)
-
 	def __eq__(self, other):
-		return self.val == int(other)
-
-	def __req__(self, other):
 		return self.val == int(other)
 
 	def __ne__(self, other):
 		return self.val != int(other)
 
-	def __rne__(self, other):
-		return self.val != int(other)
+	# casts
+	def __bool__(self):
+		# Define how the object is converted to an integer
+		return bool(self._val)
 
-	def __pow__(self, other, modulo=None):
-		raise NotImplementedError(f"Power operation not supported for {type(self)}.")
+	def __index__(self):
+		# Define how the object is converted to an integer
+		return self._val
 
-	def __mod__(self, other):
-		raise NotImplementedError(f"Modulo operator not supported for {type(self)}.")
+	def __int__(self):
+		return int(self.val)
 
-	def __truediv__(self, other):
-		raise NotImplementedError(f"In-place operations not supported for {type(self)}.")
+	def __float__(self):
+		return float(self.val)
 
-	def __iadd__(self, other):
-		raise NotImplementedError(f"In-place operations not supported for {type(self)}.")
-
-	def __isub__(self, other):
-		raise NotImplementedError(f"In-place operations not supported for {type(self)}.")
-
-	def __imul__(self, other):
-		raise NotImplementedError(f"In-place operations not supported for {type(self)}.")
-
-	def __imod__(self, other):
-		raise NotImplementedError(f"In-place operations not supported for {type(self)}.")
-
-	def __ipow__(self, other):
-		raise NotImplementedError(f"In-place operations not supported for {type(self)}.")
+	def __str__(self):
+		return str(self.val)
 
 	def __repr__(self):
 		if hasattr(self, "nbits"):
@@ -252,7 +222,10 @@ class Integer(HwType):
 			d = str(int(self._val))
 		return f"dec:{d}, hex:{h}, bin:{b}"
 
-	# slicing
+	# slicing and other utilities
+	def __len__(self):
+		raise NotImplementedError('Integers have no "length"')
+
 	def __getitem__(self, key):
 		if isinstance(key, slice):
 			hi = key.start if key.start is not None else self.nbits
@@ -296,14 +269,14 @@ class Integer(HwType):
 		m = mask(hi, lo)
 		self._val &= ~m
 		self._val += (value << lo) & m
-		return self.constrain()
+		return self._constrain()
 
 ################################################################################
 #                                     WIRE                                     #
 ################################################################################
 
 class Wire(Integer):
-	def constrain(self):
+	def _constrain(self):
 		self._val &= 1
 		return self
 
@@ -318,21 +291,21 @@ class Unsigned(Integer):
 	def mask(self):
 		return (1 << self.nbits) - 1
 
-	def constrain(self):
+	def _constrain(self):
 		self._val &= self.mask()
 		return self
 
 	def __init__(self, val=0, nbits=32, *args, **kwargs):
 		self.nbits = max(nbits, 0)
 		self.val   = val
-		self.constrain()
+		self._constrain()
 
 	def __len__(self):
 		return self.nbits
 
 	def bits(self, nbits):
 		self.nbits = nbits
-		return self.constrain()
+		return self._constrain()
 
 	def span(self, spn):
 		if spn == 0:
@@ -341,7 +314,7 @@ class Unsigned(Integer):
 			self.nbits = 1
 		else:
 			self.nbits = int(math.ceil(math.log2(spn)))
-		return self.constrain()
+		return self._constrain()
 
 	def upto(self, val):
 		if val >= 0:
@@ -358,7 +331,7 @@ class Signed(Integer):
 	def mask(self):
 		return (1 << self.nbits) - 1
 
-	def constrain(self):
+	def _constrain(self):
 		self._val &= self.mask()
 		if self._val >> (self.nbits - 1):
 			self._val -= (1 << self.nbits)
@@ -367,14 +340,14 @@ class Signed(Integer):
 	def __init__(self, val=0, nbits=32, *args, **kwargs):
 		self.nbits = max(nbits, 0)
 		self.val   = val
-		self.constrain()
+		self._constrain()
 
 	def __len__(self):
 		return self.nbits
 
 	def bits(self, nbits):
 		self.nbits = nbits
-		return self.constrain()
+		return self._constrain()
 
 	def span(self, spn):
 		if spn == 0:
@@ -383,7 +356,7 @@ class Signed(Integer):
 			self.nbits = 1
 		else:
 			self.nbits = int(math.ceil(math.log2(spn)))
-		return self.constrain()
+		return self._constrain()
 
 	def upto(self, val):
 		if val >= 0:
@@ -419,7 +392,7 @@ class Array(List, HwType):
 		for i in val:
 			self.append(deepcopy(i))
 
-	def check_type(self, b:Array|any):
+	def _check_type(self, b:Array|any):
 		if len(self) != len(b):
 			return False
 
@@ -431,8 +404,8 @@ class Array(List, HwType):
 		# all members need to be compatible
 		for i in range(len(self)):
 			if isinstance(self[i], type(b[i])):
-				if hasattr(self[i], "check_type"):
-					if self[i].check_type(b[i]):
+				if hasattr(self[i], "_check_type"):
+					if self[i]._check_type(b[i]):
 						continue
 					else:
 						return False
@@ -442,11 +415,11 @@ class Array(List, HwType):
 				return False
 		return True
 
-	def assign(self, other:Array):
-		if self.check_type(other):
+	def _assign(self, other:Array):
+		if self._check_type(other):
 			for i in range(len(self)):
-				if hasattr(self[i], "assign"):
-					self[i].assign(other[i])
+				if hasattr(self[i], "_assign"):
+					self[i]._assign(other[i])
 				else:
 					self[i] = deepcopy(other[i])
 		else:
