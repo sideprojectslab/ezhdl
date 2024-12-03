@@ -83,7 +83,7 @@ class VCD:
 					if isinstance(s.now, Record):
 						self.dump_record(s, s.now, timestamp)
 					else:
-						self.vcd_writer.change(s.vcd, timestamp=timestamp, value=s.now.val)
+						self.vcd_writer.change(s.vcd, timestamp=timestamp, value=s.now.dump)
 
 			if self.vcd_live and self.vcd_file.tell():
 				self.vcd_live = False
@@ -96,7 +96,7 @@ class VCD:
 			if isinstance(v, Record):
 				self.dump_record(s, v, timestamp, idx)
 			else:
-				self.vcd_writer.change(s.vcd[idx], timestamp=timestamp, value=v.val)
+				self.vcd_writer.change(s.vcd[idx], timestamp=timestamp, value=v.dump)
 			idx += 1
 
 
@@ -117,7 +117,10 @@ def get_vcd_specs(s : Signal|HwType):
 	if isinstance(s, Wire):
 		s_size = 1
 		s_type = "wire"
-	if isinstance(s, Unsigned):
+	elif isinstance(s, Enum):
+		s_type = "string"
+		s_size = len(s)
+	elif isinstance(s, Unsigned):
 		s_size = len(s)
 		s_type = "integer"
 	elif isinstance(s, Signed):

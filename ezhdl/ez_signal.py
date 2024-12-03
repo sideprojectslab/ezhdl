@@ -123,7 +123,8 @@ class Signal(object):
 
 		# fail if type checks did not succeed
 		if fail:
-			raise Exception(f"Source type ({type(next_val)}) not compatible with destination type ({type(self.content[0]._obj)})")
+			raise Exception(f"Source type ({type(next_val)}) not compatible with \
+				destination type ({type(self.content[0]._obj)})")
 
 		# types with assignment do not need to be copied
 		self.content[0]._pend = True

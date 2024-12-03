@@ -271,6 +271,10 @@ class Integer(HwType):
 		self._val += (value << lo) & m
 		return self._constrain()
 
+	@property
+	def dump(self):
+		return self.val
+
 ################################################################################
 #                                     WIRE                                     #
 ################################################################################
@@ -370,16 +374,38 @@ class Signed(Integer):
 #                                     ENUM                                     #
 ################################################################################
 
-class Enum(HwType):
+class EnumDef:
 	def __init__(self, *args):
+		self._str = []
 		for i in range(len(args)):
 			if not isinstance(args[i], str):
 				raise Exception("Enumeration keys must be strings")
 			self.__setattr__(args[i], i)
+			self._str.append(args[i])
 		self._len = len(args)
 
+	# reports the number of elements in the enumeration definition
 	def __len__(self):
 		return self._len
+
+
+class Enum(Unsigned):
+	def __init__(self, enum_def:EnumDef, val:Integer|any=0):
+		super().__init__(val)
+		self.span(len(enum_def))
+		self._enum_def = enum_def
+
+	# reports the maximum length of the associated strings
+	def __len__(self):
+		ret = len(max(self._enum_def._str, key=len))
+		return ret
+
+	def __str__(self):
+		return self._enum_def._str[self.val]
+
+	@property
+	def dump(self):
+		return str(self)
 
 ################################################################################
 #                                     ARRAY                                    #
@@ -441,3 +467,7 @@ class Array(List, HwType):
 			else:
 				ret.append(i)
 		return ret
+
+	@property
+	def dump(self):
+		return self.val
