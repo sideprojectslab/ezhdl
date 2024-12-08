@@ -39,6 +39,10 @@ class HwType:
 	# Class members of other types will be replaced with a "deepcopy" of the
 	# corresponding member of the source object
 
+	def _check_type(self, b:Array|any):
+		# the receiving object needs to be a subclass of the source object
+		return isinstance(self, type(b))
+
 	def _assign(self, other:HwType|any):
 		# we go through all attributes and if we find any other subclasses
 		# of hwbase we
@@ -413,10 +417,20 @@ class Enum(Unsigned):
 
 class Array(List, HwType):
 
-	def __init__(self, val):
+	def __init__(self, val, cpy=True):
 		super().__init__([])
-		for i in val:
-			self.append(deepcopy(i))
+
+		if len(val) != 0:
+			if not isinstance(val[0], HwType):
+				raise Exception("Only HwType allowed for array contents")
+
+		if cpy:
+			for i in val:
+				self.append(deepcopy(i))
+		else:
+			for i in val:
+				self.append(i)
+
 
 	def _check_type(self, b:Array|any):
 		if len(self) != len(b):
@@ -430,24 +444,26 @@ class Array(List, HwType):
 		# all members need to be compatible
 		for i in range(len(self)):
 			if isinstance(self[i], type(b[i])):
-				if hasattr(self[i], "_check_type"):
-					if self[i]._check_type(b[i]):
-						continue
-					else:
-						return False
-				else:
+				if self[i]._check_type(b[i]):
 					continue
+				else:
+					return False
 			else:
 				return False
 		return True
 
 	def _assign(self, other:Array):
 		if self._check_type(other):
-			for i in range(len(self)):
-				if hasattr(self[i], "_assign"):
-					self[i]._assign(other[i])
+			if len(self) != 0:
+				if hasattr(super().__getitem__(0), "_assign"):
+					for i in range(len(self)):
+						# Array's __getitem__ always returns a copy, so we need to
+						# call the super() version which returns a reference
+						super().__getitem__(i)._assign(other[i])
 				else:
-					self[i] = deepcopy(other[i])
+					for i in range(len(self)):
+						# this just calls setitem
+						self[i] = deepcopy(other[i])
 		else:
 			raise Exception(f"Incompatible assignment from {type(other)} to {type(self)}")
 		return self
@@ -455,7 +471,7 @@ class Array(List, HwType):
 	def __getitem__(self, key):
 		ret = super().__getitem__(key)
 		if isinstance(ret, list):
-			return Array(ret)
+			return Array(ret, cpy=False)
 		return ret
 
 	@property

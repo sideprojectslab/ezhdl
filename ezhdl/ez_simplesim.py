@@ -71,7 +71,7 @@ class SimpleSim:
 					break
 				else:
 					if count >= cls.cycle_limit:
-						raise Exception("Cyclical assignment detected")
+						raise Exception("Potential cyclical assignment detected")
 					count += 1
 				cls.force_run = False
 
