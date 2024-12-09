@@ -256,7 +256,7 @@ class Integer(HwType):
 			hi = key.start
 			lo = key.stop
 		else:
-			hi = key
+			hi = key+1
 			lo = key
 
 		hi = hi if hi is not None else self.nbits
