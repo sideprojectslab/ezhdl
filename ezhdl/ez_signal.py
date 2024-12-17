@@ -99,6 +99,9 @@ class Signal(object):
 	def now(self):
 		return self.content[-1]._obj
 
+	@property
+	def tip(self):
+		return self.content[0]._obj
 
 	@property
 	def nxt(self):
