@@ -53,6 +53,8 @@ class SimpleSim:
 	@classmethod
 	def run(cls, dut:Entity):
 		print('Simulation Started, press "F10" to enter the Pause Menu')
+		dut.reset()
+
 		cls.stop_simulation = False
 		dut.register_signals()
 
