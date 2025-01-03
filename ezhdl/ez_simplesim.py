@@ -44,6 +44,7 @@ class SimpleSim:
 	time_ps         = 0
 	event_times     = []
 	force_run       = False
+	force_dump      = False
 	cycle_limit     = 1000
 
 	vcd_path        = None
@@ -61,6 +62,8 @@ class SimpleSim:
 		# preparing VCD output
 		vcd_time_mult = 1 / time_unit_to_mult(cls.vcd_timescale)
 		vcd = VCD(cls.vcd_path, cls.vcd_timescale)
+
+		vcd.dump(int(cls.time_ps*vcd_time_mult), cls.force_dump)
 
 		# running simulation
 		while not cls.stop_simulation:

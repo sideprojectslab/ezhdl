@@ -75,11 +75,11 @@ class VCD:
 						name=s.name, var_type=s_type, size=s_size)
 
 
-	def dump(self, timestamp):
+	def dump(self, timestamp, force=False):
 		if self.vcd_file != None:
 			for i in Signal.instances:
 				s = i()
-				if s._transition and s.vcd != None:
+				if (s._transition or force) and s.vcd != None:
 					if isinstance(s.now, Record):
 						self.dump_record(s, s.now, timestamp)
 					else:
